@@ -1,0 +1,25 @@
+{
+  "name": "sonix-movie-downloader",
+  "version": "1.0.0",
+  "description": "A movie downloader backend that fetches links and downloads movies",
+  "main": "download.js",
+  "scripts": {
+    "start": "node download.js",
+    "dev": "nodemon download.js"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "fs": "0.0.1-security",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "author": "Sonix Movies",
+  "license": "MIT"
+}
