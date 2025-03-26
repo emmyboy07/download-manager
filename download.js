@@ -2,23 +2,32 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const cors = require("cors");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ✅ Enable CORS to allow browser requests
+const corsOptions = {
+    origin: "*",
+    methods: "GET,POST",
+    allowedHeaders: "Content-Type",
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 
+// ✅ Define local storage folder for downloads
 const DOWNLOAD_FOLDER = path.join(require("os").homedir(), "Downloads", "Sonix Movies");
 
-// Ensure the download folder exists
+// ✅ Ensure download folder exists
 if (!fs.existsSync(DOWNLOAD_FOLDER)) {
     fs.mkdirSync(DOWNLOAD_FOLDER, { recursive: true });
 }
 
-// Store active downloads
+// ✅ Track active downloads
 const downloads = {};
 
-// Route to start or resume a download
+// ✅ Route to start or resume a download
 app.post("/start_download", async (req, res) => {
     const { movieUrl, fileName } = req.body;
 
@@ -27,16 +36,14 @@ app.post("/start_download", async (req, res) => {
     }
 
     const filePath = path.join(DOWNLOAD_FOLDER, fileName);
-    const tempFilePath = `${filePath}.part`;
 
-    let startByte = 0;
-
-    if (fs.existsSync(tempFilePath)) {
-        startByte = fs.statSync(tempFilePath).size;
+    // ✅ Check if file already exists (Avoid duplicate downloads)
+    if (fs.existsSync(filePath)) {
+        return res.status(200).json({ message: "File already downloaded", filePath });
     }
 
     downloads[fileName] = {
-        progress: startByte,
+        progress: 0,
         status: "Downloading",
         startTime: Date.now(),
         speed: 0,
@@ -48,13 +55,13 @@ app.post("/start_download", async (req, res) => {
             method: "GET",
             url: movieUrl,
             responseType: "stream",
-            headers: { Range: `bytes=${startByte}-` },
         });
 
-        const totalSize = parseInt(response.headers["content-length"], 10) + startByte;
-        let downloadedSize = startByte;
+        const totalSize = parseInt(response.headers["content-length"], 10);
+        let downloadedSize = 0;
 
-        const file = fs.createWriteStream(tempFilePath, { flags: "a" });
+        const fileStream = fs.createWriteStream(filePath);
+
         response.data.on("data", (chunk) => {
             downloadedSize += chunk.length;
             const elapsedTime = (Date.now() - downloads[fileName].startTime) / 1000;
@@ -67,57 +74,26 @@ app.post("/start_download", async (req, res) => {
             downloads[fileName].eta = eta > 0 ? `${Math.round(eta)} sec` : "Almost done";
         });
 
-        response.data.pipe(file);
+        response.data.pipe(fileStream);
 
-        file.on("finish", () => {
-            fs.renameSync(tempFilePath, filePath);
+        fileStream.on("finish", () => {
             downloads[fileName].status = "Completed";
+            console.log(`✅ Download completed: ${filePath}`);
         });
 
-        file.on("error", (err) => {
+        fileStream.on("error", (err) => {
             downloads[fileName].status = "Failed";
             res.status(500).json({ error: "Download failed", details: err.message });
         });
 
-        res.json({ message: "Download started", fileName });
+        res.json({ message: "Download started", fileName, filePath });
     } catch (error) {
         downloads[fileName].status = "Failed";
         res.status(500).json({ error: "Download failed", details: error.message });
     }
 });
 
-// Route to pause a download
-app.post("/pause_download", (req, res) => {
-    const { fileName } = req.body;
-
-    if (!fileName || !downloads[fileName]) {
-        return res.status(404).json({ error: "Download not found" });
-    }
-
-    downloads[fileName].status = "Paused";
-    res.json({ message: "Download paused", fileName });
-});
-
-// Route to cancel a download
-app.post("/cancel_download", (req, res) => {
-    const { fileName } = req.body;
-
-    if (!fileName || !downloads[fileName]) {
-        return res.status(404).json({ error: "Download not found" });
-    }
-
-    const filePath = path.join(DOWNLOAD_FOLDER, fileName);
-    const tempFilePath = `${filePath}.part`;
-
-    if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
-    delete downloads[fileName];
-
-    res.json({ message: "Download canceled", fileName });
-});
-
-// Route to check download progress
+// ✅ Route to check download progress
 app.get("/download_progress", (req, res) => {
     const { fileName } = req.query;
 
@@ -128,7 +104,7 @@ app.get("/download_progress", (req, res) => {
     res.json(downloads[fileName]);
 });
 
-// Start the server
+// ✅ Start the server
 app.listen(PORT, () => {
     console.log(`✅ Server is running on http://127.0.0.1:${PORT}`);
 });
